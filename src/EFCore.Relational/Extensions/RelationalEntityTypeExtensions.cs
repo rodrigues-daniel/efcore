@@ -245,7 +245,7 @@ namespace Microsoft.EntityFrameworkCore
         /// <param name="entityType"> The entity type to get the table mappings for. </param>
         /// <returns> The tables to which the entity type is mapped. </returns>
         public static IEnumerable<ITableMappingBase> GetDefaultMappings([NotNull] this IEntityType entityType)
-            => (IEnumerable<ITableMappingBase>)entityType[RelationalAnnotationNames.DefaultMappings]
+            => (IEnumerable<ITableMappingBase>)entityType.FindRuntimeAnnotationValue(RelationalAnnotationNames.DefaultMappings)
                 ?? Array.Empty<ITableMappingBase>();
 
         /// <summary>
@@ -254,7 +254,7 @@ namespace Microsoft.EntityFrameworkCore
         /// <param name="entityType"> The entity type to get the table mappings for. </param>
         /// <returns> The tables to which the entity type is mapped. </returns>
         public static IEnumerable<ITableMapping> GetTableMappings([NotNull] this IEntityType entityType)
-            => (IEnumerable<ITableMapping>)entityType[RelationalAnnotationNames.TableMappings]
+            => (IEnumerable<ITableMapping>)entityType.FindRuntimeAnnotationValue(RelationalAnnotationNames.TableMappings)
                 ?? Array.Empty<ITableMapping>();
 
         /// <summary>
@@ -417,7 +417,7 @@ namespace Microsoft.EntityFrameworkCore
         /// <param name="entityType"> The entity type to get the view mappings for. </param>
         /// <returns> The views to which the entity type is mapped. </returns>
         public static IEnumerable<IViewMapping> GetViewMappings([NotNull] this IEntityType entityType)
-            => (IEnumerable<IViewMapping>)entityType[RelationalAnnotationNames.ViewMappings]
+            => (IEnumerable<IViewMapping>)entityType.FindRuntimeAnnotationValue(RelationalAnnotationNames.ViewMappings)
                 ?? Array.Empty<IViewMapping>();
 
         /// <summary>
@@ -491,7 +491,7 @@ namespace Microsoft.EntityFrameworkCore
         /// <param name="entityType"> The entity type to get the function mappings for. </param>
         /// <returns> The functions to which the entity type is mapped. </returns>
         public static IEnumerable<ISqlQueryMapping> GetSqlQueryMappings([NotNull] this IEntityType entityType)
-            => (IEnumerable<ISqlQueryMapping>)entityType[RelationalAnnotationNames.SqlQueryMappings]
+            => (IEnumerable<ISqlQueryMapping>)entityType.FindRuntimeAnnotationValue(RelationalAnnotationNames.SqlQueryMappings)
                 ?? Array.Empty<ISqlQueryMapping>();
 
         /// <summary>
@@ -556,7 +556,7 @@ namespace Microsoft.EntityFrameworkCore
         /// <param name="entityType"> The entity type to get the function mappings for. </param>
         /// <returns> The functions to which the entity type is mapped. </returns>
         public static IEnumerable<IFunctionMapping> GetFunctionMappings([NotNull] this IEntityType entityType)
-            => (IEnumerable<IFunctionMapping>)entityType[RelationalAnnotationNames.FunctionMappings]
+            => (IEnumerable<IFunctionMapping>)entityType.FindRuntimeAnnotationValue(RelationalAnnotationNames.FunctionMappings)
                 ?? Array.Empty<IFunctionMapping>();
 
         /// <summary>

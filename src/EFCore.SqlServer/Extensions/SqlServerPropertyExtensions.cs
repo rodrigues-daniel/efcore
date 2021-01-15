@@ -6,8 +6,10 @@ using System.Linq;
 using JetBrains.Annotations;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Metadata.Internal;
 using Microsoft.EntityFrameworkCore.SqlServer.Internal;
 using Microsoft.EntityFrameworkCore.SqlServer.Metadata.Internal;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.EntityFrameworkCore.Utilities;
 
 // ReSharper disable once CheckNamespace
@@ -363,6 +365,12 @@ namespace Microsoft.EntityFrameworkCore
         public static SqlServerValueGenerationStrategy GetValueGenerationStrategy(
             [NotNull] this IProperty property,
             in StoreObjectIdentifier storeObject)
+            => GetValueGenerationStrategy(property, storeObject, null);
+
+        internal static SqlServerValueGenerationStrategy GetValueGenerationStrategy(
+            [NotNull] this IProperty property,
+            in StoreObjectIdentifier storeObject,
+            ITypeMappingSource typeMappingSource)
         {
             var annotation = property.FindAnnotation(SqlServerAnnotationNames.ValueGenerationStrategy);
             if (annotation != null)
@@ -389,7 +397,7 @@ namespace Microsoft.EntityFrameworkCore
                 return SqlServerValueGenerationStrategy.None;
             }
 
-            return GetDefaultValueGenerationStrategy(property);
+            return GetDefaultValueGenerationStrategy(property, storeObject, typeMappingSource);
         }
 
         private static SqlServerValueGenerationStrategy GetDefaultValueGenerationStrategy(IProperty property)
@@ -404,6 +412,25 @@ namespace Microsoft.EntityFrameworkCore
 
             return modelStrategy == SqlServerValueGenerationStrategy.IdentityColumn
                 && IsCompatibleWithValueGeneration(property)
+                    ? SqlServerValueGenerationStrategy.IdentityColumn
+                    : SqlServerValueGenerationStrategy.None;
+        }
+
+        private static SqlServerValueGenerationStrategy GetDefaultValueGenerationStrategy(
+            IProperty property,
+            in StoreObjectIdentifier storeObject,
+            ITypeMappingSource typeMappingSource)
+        {
+            var modelStrategy = property.DeclaringEntityType.Model.GetValueGenerationStrategy();
+
+            if (modelStrategy == SqlServerValueGenerationStrategy.SequenceHiLo
+                && IsCompatibleWithValueGeneration(property, storeObject, typeMappingSource))
+            {
+                return SqlServerValueGenerationStrategy.SequenceHiLo;
+            }
+
+            return modelStrategy == SqlServerValueGenerationStrategy.IdentityColumn
+                && IsCompatibleWithValueGeneration(property, storeObject, typeMappingSource)
                     ? SqlServerValueGenerationStrategy.IdentityColumn
                     : SqlServerValueGenerationStrategy.None;
         }
@@ -487,6 +514,21 @@ namespace Microsoft.EntityFrameworkCore
                     || type == typeof(decimal))
                 && (property.GetValueConverter()
                     ?? property.FindTypeMapping()?.Converter)
+                == null;
+        }
+
+        private static bool IsCompatibleWithValueGeneration(
+            [NotNull] IProperty property,
+            in StoreObjectIdentifier storeObject,
+            ITypeMappingSource typeMappingSource)
+        {
+            var type = property.ClrType;
+
+            return (type.IsInteger()
+                    || type == typeof(decimal))
+                && (property.GetValueConverter()
+                    ?? (property.FindRelationalTypeMapping(storeObject)
+                        ?? typeMappingSource?.FindMapping(property))?.Converter)
                 == null;
         }
     }

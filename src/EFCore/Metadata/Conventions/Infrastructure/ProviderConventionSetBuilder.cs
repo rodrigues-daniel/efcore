@@ -230,7 +230,6 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Conventions.Infrastructure
             conventionSet.ModelFinalizingConventions.Add(foreignKeyAttributeConvention);
             conventionSet.ModelFinalizingConventions.Add(new ChangeTrackingStrategyConvention(Dependencies));
             conventionSet.ModelFinalizingConventions.Add(new ConstructorBindingConvention(Dependencies));
-            conventionSet.ModelFinalizingConventions.Add(new TypeMappingConvention(Dependencies));
             conventionSet.ModelFinalizingConventions.Add(foreignKeyIndexConvention);
             conventionSet.ModelFinalizingConventions.Add(foreignKeyPropertyDiscoveryConvention);
             conventionSet.ModelFinalizingConventions.Add(servicePropertyDiscoveryConvention);
@@ -239,8 +238,6 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Conventions.Infrastructure
             conventionSet.ModelFinalizingConventions.Add(new QueryFilterRewritingConvention(Dependencies));
             conventionSet.ModelFinalizingConventions.Add(inversePropertyAttributeConvention);
             conventionSet.ModelFinalizingConventions.Add(backingFieldConvention);
-
-            conventionSet.ModelFinalizedConventions.Add(new ValidatingConvention(Dependencies));
 
             return conventionSet;
         }

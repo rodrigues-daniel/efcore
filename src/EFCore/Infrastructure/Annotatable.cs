@@ -26,12 +26,7 @@ namespace Microsoft.EntityFrameworkCore.Infrastructure
     public class Annotatable : IMutableAnnotatable
     {
         private SortedDictionary<string, Annotation>? _annotations;
-
-        /// <summary>
-        ///     Gets all annotations on the current object.
-        /// </summary>
-        public virtual IEnumerable<Annotation> GetAnnotations()
-            => _annotations?.Values ?? Enumerable.Empty<Annotation>();
+        private SortedDictionary<string, Annotation>? _runtimeAnnotations;
 
         /// <summary>
         ///     <para>Indicates whether the current object is read-only.</para>
@@ -40,18 +35,35 @@ namespace Microsoft.EntityFrameworkCore.Infrastructure
         ///         Runtime annotations cannot be changed when the object is not read-only.
         ///     </para>
         /// </summary>
-        protected virtual bool IsReadonly => false;
+        protected virtual bool IsReadOnly => false;
 
         /// <summary>
         ///     Throws if the model is not read-only.
         /// </summary>
-        protected virtual void EnsureReadonly(bool shouldBeReadonly = true)
+        protected virtual void EnsureReadOnly()
         {
-            if (!shouldBeReadonly && IsReadonly)
+            if (!IsReadOnly)
+            {
+                throw new InvalidOperationException(CoreStrings.ModelMutable);
+            }
+        }
+
+        /// <summary>
+        ///     Throws if the model is read-only.
+        /// </summary>
+        protected virtual void EnsureMutable()
+        {
+            if (IsReadOnly)
             {
                 throw new InvalidOperationException(CoreStrings.ModelReadOnly);
             }
         }
+
+        /// <summary>
+        ///     Gets all annotations on the current object.
+        /// </summary>
+        public virtual IEnumerable<Annotation> GetAnnotations()
+            => _annotations?.Values ?? Enumerable.Empty<Annotation>();
 
         /// <summary>
         ///     Adds an annotation to this object. Throws if an annotation with the specified name already exists.
@@ -117,7 +129,7 @@ namespace Microsoft.EntityFrameworkCore.Infrastructure
             [NotNull] Annotation annotation,
             [CanBeNull] Annotation? oldAnnotation)
         {
-            EnsureReadonly(false);
+            EnsureMutable();
 
             if (_annotations == null)
             {
@@ -168,7 +180,7 @@ namespace Microsoft.EntityFrameworkCore.Infrastructure
         public virtual Annotation? RemoveAnnotation([NotNull] string name)
         {
             Check.NotNull(name, nameof(name));
-            EnsureReadonly(false);
+            EnsureMutable();
 
             var annotation = FindAnnotation(name);
             if (annotation == null)
@@ -223,6 +235,136 @@ namespace Microsoft.EntityFrameworkCore.Infrastructure
         protected virtual Annotation CreateAnnotation([NotNull] string name, [CanBeNull] object? value)
             => new(name, value);
 
+        /// <summary>
+        ///     Gets all runtime annotations on the current object.
+        /// </summary>
+        public virtual IEnumerable<Annotation> GetRuntimeAnnotations()
+            => _runtimeAnnotations?.Values ?? Enumerable.Empty<Annotation>();
+
+        /// <summary>
+        ///     Adds a runtime annotation to this object. Throws if an annotation with the specified name already exists.
+        /// </summary>
+        /// <param name="name"> The key of the annotation to be added. </param>
+        /// <param name="value"> The value to be stored in the annotation. </param>
+        /// <returns> The newly added annotation. </returns>
+        public virtual Annotation AddRuntimeAnnotation([NotNull] string name, [CanBeNull] object? value)
+        {
+            Check.NotEmpty(name, nameof(name));
+
+            var annotation = CreateRuntimeAnnotation(name, value);
+
+            return AddRuntimeAnnotation(name, annotation);
+        }
+
+        /// <summary>
+        ///     Adds a runtime annotation to this object. Throws if an annotation with the specified name already exists.
+        /// </summary>
+        /// <param name="name"> The key of the annotation to be added. </param>
+        /// <param name="annotation"> The annotation to be added. </param>
+        /// <returns> The added annotation. </returns>
+        protected virtual Annotation AddRuntimeAnnotation([NotNull] string name, [NotNull] Annotation annotation)
+        {
+            if (FindRuntimeAnnotation(name) != null)
+            {
+                throw new InvalidOperationException(CoreStrings.DuplicateAnnotation(name, ToString()));
+            }
+
+            SetRuntimeAnnotation(name, annotation, oldAnnotation: null);
+
+            return annotation;
+        }
+
+        /// <summary>
+        ///     Sets the runtime annotation stored under the given key. Overwrites the existing annotation if an
+        ///     annotation with the specified name already exists.
+        /// </summary>
+        /// <param name="name"> The key of the annotation to be added. </param>
+        /// <param name="value"> The value to be stored in the annotation. </param>
+        public virtual Annotation SetRuntimeAnnotation([NotNull] string name, [CanBeNull] object? value)
+        {
+            var oldAnnotation = FindRuntimeAnnotation(name);
+            if (oldAnnotation != null
+                && Equals(oldAnnotation.Value, value))
+            {
+                return oldAnnotation;
+            }
+
+            return SetRuntimeAnnotation(name, CreateRuntimeAnnotation(name, value), oldAnnotation);
+        }
+
+        /// <summary>
+        ///     Sets the runtime annotation stored under the given key. Overwrites the existing annotation if an
+        ///     annotation with the specified name already exists.
+        /// </summary>
+        /// <param name="name"> The key of the annotation to be added. </param>
+        /// <param name="annotation"> The annotation to be set. </param>
+        /// <param name="oldAnnotation"> The annotation being replaced. </param>
+        /// <returns> The annotation that was set. </returns>
+        protected virtual Annotation SetRuntimeAnnotation(
+            [NotNull] string name,
+            [NotNull] Annotation annotation,
+            [CanBeNull] Annotation? oldAnnotation)
+        {
+            EnsureReadOnly();
+
+            if (_runtimeAnnotations == null)
+            {
+                _runtimeAnnotations = new SortedDictionary<string, Annotation>();
+            }
+
+            _runtimeAnnotations[name] = annotation;
+
+            return annotation;
+        }
+
+        /// <summary>
+        ///     Gets the runtime annotation with the given name, returning <see langword="null" /> if it does not exist.
+        /// </summary>
+        /// <param name="name"> The key of the annotation to find. </param>
+        /// <returns>
+        ///     The existing annotation if an annotation with the specified name already exists. Otherwise, <see langword="null" />.
+        /// </returns>
+        public virtual Annotation? FindRuntimeAnnotation([NotNull] string name)
+        {
+            Check.NotEmpty(name, nameof(name));
+
+            return _runtimeAnnotations == null
+                ? null
+                : _runtimeAnnotations.TryGetValue(name, out var annotation)
+                    ? annotation
+                    : null;
+        }
+
+        /// <summary>
+        ///     Removes the given runtime annotation from this object.
+        /// </summary>
+        /// <param name="name"> The annotation to remove. </param>
+        /// <returns> The annotation that was removed. </returns>
+        public virtual Annotation? RemoveRuntimeAnnotation([NotNull] string name)
+        {
+            Check.NotNull(name, nameof(name));
+            EnsureReadOnly();
+
+            var annotation = FindRuntimeAnnotation(name);
+            if (annotation == null)
+            {
+                return null;
+            }
+
+            _runtimeAnnotations!.Remove(name);
+
+            return annotation;
+        }
+
+        /// <summary>
+        ///     Creates a new runtime annotation.
+        /// </summary>
+        /// <param name="name"> The key of the annotation. </param>
+        /// <param name="value"> The value to be stored in the annotation. </param>
+        /// <returns> The newly created annotation. </returns>
+        protected virtual Annotation CreateRuntimeAnnotation([NotNull] string name, [CanBeNull] object? value)
+            => new Annotation(name, value);
+
         /// <inheritdoc />
         [DebuggerStepThrough]
         IEnumerable<IAnnotation> IAnnotatable.GetAnnotations()
@@ -242,5 +384,24 @@ namespace Microsoft.EntityFrameworkCore.Infrastructure
         [DebuggerStepThrough]
         IAnnotation? IMutableAnnotatable.RemoveAnnotation(string name)
             => RemoveAnnotation(name);
+
+        /// <inheritdoc />
+        IEnumerable<IAnnotation> IAnnotatable.GetRuntimeAnnotations()
+            => GetRuntimeAnnotations();
+
+        /// <inheritdoc />
+        IAnnotation? IAnnotatable.FindRuntimeAnnotation(string name)
+            => FindRuntimeAnnotation(name);
+
+        /// <inheritdoc />
+        IAnnotation IAnnotatable.AddRuntimeAnnotation(string name, object? value)
+            => AddRuntimeAnnotation(name, value);
+
+        /// <inheritdoc />
+        IAnnotation? IAnnotatable.RemoveRuntimeAnnotation(string name)
+            => RemoveRuntimeAnnotation(name);
+
+        IAnnotation IAnnotatable.SetRuntimeAnnotation(string name, object? value)
+            => SetRuntimeAnnotation(name, value);
     }
 }

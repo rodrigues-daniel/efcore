@@ -108,7 +108,7 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Internal
             [CanBeNull] ServiceParameterBinding? parameterBinding,
             ConfigurationSource configurationSource)
         {
-            EnsureReadonly(false);
+            EnsureMutable();
 
             _parameterBinding = parameterBinding;
 

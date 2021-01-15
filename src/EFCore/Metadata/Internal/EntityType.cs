@@ -76,6 +76,8 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Internal
         private Func<ValueBuffer, ISnapshot>? _shadowValuesFactory;
         private Func<ISnapshot>? _emptyShadowValuesFactory;
         private Func<MaterializationContext, object>? _instanceFactory;
+        private IProperty[]? _propagatingProperties;
+        private IProperty[]? _generatingProperties;
 
         /// <summary>
         ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
@@ -183,7 +185,7 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Internal
         /// </summary>
         public virtual bool? SetIsKeyless(bool? keyless, ConfigurationSource configurationSource)
         {
-            EnsureReadonly(false);
+            EnsureMutable();
 
             if (_isKeyless == keyless)
             {
@@ -246,7 +248,7 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Internal
         /// </summary>
         public virtual EntityType? SetBaseType([CanBeNull] EntityType? newBaseType, ConfigurationSource configurationSource)
         {
-            EnsureReadonly(false);
+            EnsureMutable();
             Check.DebugAssert(Builder != null, "Builder is null");
 
             if (_baseType == newBaseType)
@@ -532,7 +534,7 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Internal
             [CanBeNull] IReadOnlyList<Property>? properties,
             ConfigurationSource configurationSource)
         {
-            EnsureReadonly(false);
+            EnsureMutable();
             Check.DebugAssert(Builder != null, "Builder is null");
 
             if (_baseType != null)
@@ -694,7 +696,7 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Internal
         {
             Check.NotEmpty(properties, nameof(properties));
             Check.HasNoNulls(properties, nameof(properties));
-            EnsureReadonly(false);
+            EnsureMutable();
 
             if (_baseType != null)
             {
@@ -832,7 +834,7 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Internal
         {
             Check.NotNull(key, nameof(key));
             Check.DebugAssert(Builder != null, "Builder is null");
-            EnsureReadonly(false);
+            EnsureMutable();
 
             if (key.DeclaringEntityType != this)
             {
@@ -926,7 +928,7 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Internal
             Check.HasNoNulls(properties, nameof(properties));
             Check.NotNull(principalKey, nameof(principalKey));
             Check.NotNull(principalEntityType, nameof(principalEntityType));
-            EnsureReadonly(false);
+            EnsureMutable();
 
             var foreignKey = new ForeignKey(
                 properties, principalKey, this, principalEntityType, configurationSource);
@@ -1280,7 +1282,7 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Internal
         {
             Check.NotNull(foreignKey, nameof(foreignKey));
             Check.DebugAssert(Builder != null, "Builder is null");
-            EnsureReadonly(false);
+            EnsureMutable();
 
             if (foreignKey.DeclaringEntityType != this)
             {
@@ -1416,7 +1418,7 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Internal
 
         private Navigation AddNavigation(MemberIdentity navigationMember, ForeignKey foreignKey, bool pointsToPrincipal)
         {
-            EnsureReadonly(false);
+            EnsureMutable();
 
             var name = navigationMember.Name!;
             var duplicateNavigation = FindNavigationsInHierarchy(name).FirstOrDefault();
@@ -1569,7 +1571,7 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Internal
         public virtual Navigation? RemoveNavigation([NotNull] string name)
         {
             Check.NotEmpty(name, nameof(name));
-            EnsureReadonly(false);
+            EnsureMutable();
 
             var navigation = FindDeclaredNavigation(name);
             if (navigation == null)
@@ -1609,7 +1611,7 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Internal
         {
             Check.NotEmpty(name, nameof(name));
             Check.NotNull(targetEntityType, nameof(targetEntityType));
-            EnsureReadonly(false);
+            EnsureMutable();
 
             var duplicateProperty = FindMembersInHierarchy(name).FirstOrDefault();
             if (duplicateProperty != null)
@@ -1810,7 +1812,7 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Internal
         {
             Check.NotNull(navigation, nameof(navigation));
             Check.DebugAssert(Builder != null, "Builder is null");
-            EnsureReadonly(false);
+            EnsureMutable();
 
             if (navigation.DeclaringEntityType != this)
             {
@@ -1932,7 +1934,7 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Internal
         {
             Check.NotEmpty(properties, nameof(properties));
             Check.HasNoNulls(properties, nameof(properties));
-            EnsureReadonly(false);
+            EnsureMutable();
 
             CheckIndexProperties(properties);
 
@@ -1965,7 +1967,7 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Internal
             Check.NotEmpty(properties, nameof(properties));
             Check.HasNoNulls(properties, nameof(properties));
             Check.NotEmpty(name, nameof(name));
-            EnsureReadonly(false);
+            EnsureMutable();
 
             CheckIndexProperties(properties);
 
@@ -2192,7 +2194,7 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Internal
         {
             Check.NotNull(index, nameof(index));
             Check.DebugAssert(Builder != null, "Builder is null");
-            EnsureReadonly(false);
+            EnsureMutable();
 
             if (index.Name == null)
             {
@@ -2319,7 +2321,7 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Internal
             Check.NotNull(name, nameof(name));
             Check.NotNull(propertyType, nameof(propertyType));
             Check.DebugAssert(Builder != null, "Builder is null");
-            EnsureReadonly(false);
+            EnsureMutable();
 
             var conflictingMember = FindMembersInHierarchy(name).FirstOrDefault();
             if (conflictingMember != null)
@@ -2493,7 +2495,7 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Internal
         {
             Check.NotNull(property, nameof(property));
             Check.DebugAssert(Builder != null, "Builder is null");
-            EnsureReadonly(false);
+            EnsureMutable();
 
             if (property.DeclaringEntityType != this)
             {
@@ -2560,7 +2562,11 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Internal
         ///     doing so can result in application failures when updating to a new Entity Framework Core release.
         /// </summary>
         public virtual PropertyCounts Counts
-            => NonCapturingLazyInitializer.EnsureInitialized(ref _counts, this, static entityType => entityType.CalculateCounts());
+            => NonCapturingLazyInitializer.EnsureInitialized(ref _counts, this, static entityType =>
+            {
+                entityType.EnsureReadOnly();
+                return entityType.CalculateCounts();
+            });
 
         /// <summary>
         ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
@@ -2571,7 +2577,11 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Internal
         public virtual Func<InternalEntityEntry, ISnapshot> RelationshipSnapshotFactory
             => NonCapturingLazyInitializer.EnsureInitialized(
                 ref _relationshipSnapshotFactory, this,
-                static entityType => new RelationshipSnapshotFactoryFactory().Create(entityType));
+                static entityType =>
+                {
+                    entityType.EnsureReadOnly();
+                    return new RelationshipSnapshotFactoryFactory().Create(entityType);
+                });
 
         /// <summary>
         ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
@@ -2582,7 +2592,11 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Internal
         public virtual Func<InternalEntityEntry, ISnapshot> OriginalValuesFactory
             => NonCapturingLazyInitializer.EnsureInitialized(
                 ref _originalValuesFactory, this,
-                static entityType => new OriginalValuesFactoryFactory().Create(entityType));
+                static entityType =>
+                {
+                    entityType.EnsureReadOnly();
+                    return new OriginalValuesFactoryFactory().Create(entityType);
+                });
 
         /// <summary>
         ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
@@ -2593,7 +2607,11 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Internal
         public virtual Func<InternalEntityEntry, ISnapshot> StoreGeneratedValuesFactory
             => NonCapturingLazyInitializer.EnsureInitialized(
                 ref _storeGeneratedValuesFactory, this,
-                static entityType => new SidecarValuesFactoryFactory().Create(entityType));
+                static entityType =>
+                {
+                    entityType.EnsureReadOnly();
+                    return new SidecarValuesFactoryFactory().Create(entityType);
+                });
 
         /// <summary>
         ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
@@ -2604,7 +2622,11 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Internal
         public virtual Func<InternalEntityEntry, ISnapshot> TemporaryValuesFactory
             => NonCapturingLazyInitializer.EnsureInitialized(
                 ref _temporaryValuesFactory, this,
-                static entityType => new TemporaryValuesFactoryFactory().Create(entityType));
+                static entityType =>
+                {
+                    entityType.EnsureReadOnly();
+                    return new TemporaryValuesFactoryFactory().Create(entityType);
+                });
 
         /// <summary>
         ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
@@ -2615,7 +2637,11 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Internal
         public virtual Func<ValueBuffer, ISnapshot> ShadowValuesFactory
             => NonCapturingLazyInitializer.EnsureInitialized(
                 ref _shadowValuesFactory, this,
-                static entityType => new ShadowValuesFactoryFactory().Create(entityType));
+                static entityType =>
+                {
+                    entityType.EnsureReadOnly();
+                    return new ShadowValuesFactoryFactory().Create(entityType);
+                });
 
         /// <summary>
         ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
@@ -2626,7 +2652,11 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Internal
         public virtual Func<ISnapshot> EmptyShadowValuesFactory
             => NonCapturingLazyInitializer.EnsureInitialized(
                 ref _emptyShadowValuesFactory, this,
-                static entityType => new EmptyShadowValuesFactoryFactory().CreateEmpty(entityType));
+                static entityType =>
+                {
+                    entityType.EnsureReadOnly();
+                    return new EmptyShadowValuesFactoryFactory().CreateEmpty(entityType);
+                });
 
         /// <summary>
         ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
@@ -2639,6 +2669,8 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Internal
                 ref _instanceFactory, this,
                 static entityType =>
                 {
+                    entityType.EnsureReadOnly();
+
                     var binding = (InstantiationBinding?)entityType[CoreAnnotationNames.ServiceOnlyConstructorBinding];
                     if (binding == null)
                     {
@@ -2647,11 +2679,43 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Internal
 
                     var contextParam = Expression.Parameter(typeof(MaterializationContext), "mc");
 
-                    entityType._instanceFactory = Expression.Lambda<Func<MaterializationContext, object>>(
+                    return Expression.Lambda<Func<MaterializationContext, object>>(
                             binding.CreateConstructorExpression(
                                 new ParameterBindingInfo(entityType, contextParam)),
                             contextParam)
                         .Compile();
+                });
+
+        /// <summary>
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
+        /// </summary>
+        public virtual IReadOnlyList<IProperty> PropagatingProperties
+            => NonCapturingLazyInitializer.EnsureInitialized(
+                ref _propagatingProperties, this,
+                static entityType =>
+                {
+                    entityType.EnsureReadOnly();
+
+                    return entityType.GetProperties().Where(p => p.IsForeignKey()).ToArray();
+                });
+
+        /// <summary>
+        ///     This is an internal API that supports the Entity Framework Core infrastructure and not subject to
+        ///     the same compatibility standards as public APIs. It may be changed or removed without notice in
+        ///     any release. You should only use it directly in your code with extreme caution and knowing that
+        ///     doing so can result in application failures when updating to a new Entity Framework Core release.
+        /// </summary>
+        public virtual IReadOnlyList<IProperty> GeneratingProperties
+            => NonCapturingLazyInitializer.EnsureInitialized(
+                ref _generatingProperties, this,
+                static entityType =>
+                {
+                    entityType.EnsureReadOnly();
+
+                    return entityType.GetProperties().Where(p => p.RequiresValueGenerator()).ToArray();
                 });
 
         #endregion
@@ -2670,7 +2734,7 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Internal
             ConfigurationSource configurationSource)
         {
             Check.NotNull(memberInfo, nameof(memberInfo));
-            EnsureReadonly(false);
+            EnsureMutable();
 
             var name = memberInfo.GetSimpleMemberName();
             var duplicateMember = FindMembersInHierarchy(name).FirstOrDefault();
@@ -2802,7 +2866,7 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Internal
         {
             Check.NotNull(property, nameof(property));
             Check.DebugAssert(Builder != null, "Builder is null");
-            EnsureReadonly(false);
+            EnsureMutable();
 
             if (property.DeclaringEntityType != this)
             {
@@ -2989,7 +3053,7 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Internal
         /// </summary>
         public virtual void AddData([NotNull] IEnumerable<object> data)
         {
-            EnsureReadonly(false);
+            EnsureMutable();
 
             _data ??= new List<object>();
 
@@ -3032,7 +3096,7 @@ namespace Microsoft.EntityFrameworkCore.Metadata.Internal
             ChangeTrackingStrategy? changeTrackingStrategy,
             ConfigurationSource configurationSource)
         {
-            EnsureReadonly(false);
+            EnsureMutable();
 
             if (changeTrackingStrategy != null)
             {
